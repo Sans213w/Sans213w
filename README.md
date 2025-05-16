@@ -1,107 +1,193 @@
-local UserInputService = game:GetService("UserInputService")
+-- Serviços
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
 
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local hum = char:WaitForChild("Humanoid")
+local hrp = char:WaitForChild("HumanoidRootPart")
 
-local dodgeDistance = 10
-local isDodging = false
+-- Variáveis
+local isNight = false
+local canAttack = true
+local cooldown = 2
+local knife = nil
 
--- Ajuste aqui para detectar se você é killer no seu jogo
-local isKiller = false -- Mude para true se for killer
+-- Criar GUI notificação
+local ScreenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+ScreenGui.Name = "NeggarNotification"
 
--- Função para checar se posição é segura (não colide com nada)
-local function isPositionSafe(position)
-    local regionSize = Vector3.new(3, 5, 3)
-    local region = Region3.new(position - regionSize/2, position + regionSize/2)
-    region = region:ExpandToGrid(4)
+local function createNotification(text, duration)
+    local notifFrame = Instance.new("Frame", ScreenGui)
+    notifFrame.Size = UDim2.new(0, 300, 0, 50)
+    notifFrame.Position = UDim2.new(1, -310, 0, 10)
+    notifFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    notifFrame.BackgroundTransparency = 0.5
+    notifFrame.BorderSizePixel = 0
+    notifFrame.AnchorPoint = Vector2.new(1, 0)
 
-    local partsInRegion = Workspace:FindPartsInRegion3WithIgnoreList(region, {Character}, 10)
-    for _, part in pairs(partsInRegion) do
-        if part.CanCollide then
-            return false
+    local notifText = Instance.new("TextLabel", notifFrame)
+    notifText.Size = UDim2.new(1, 0, 1, 0)
+    notifText.BackgroundTransparency = 1
+    notifText.TextColor3 = Color3.fromRGB(0, 255, 0)
+    notifText.TextStrokeTransparency = 0
+    notifText.Text = text
+    notifText.Font = Enum.Font.GothamBold
+    notifText.TextScaled = true
+
+    notifFrame.Visible = true
+    TweenService:Create(notifFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+    wait(duration or 3)
+    TweenService:Create(notifFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.5}):Play()
+    wait(0.5)
+    notifFrame:Destroy()
+end
+
+-- Notificação inicial
+spawn(function()
+    createNotification("Script Neggar carregado com sucesso!", 4)
+end)
+
+-- Cria faca estilizada
+local function createKnife()
+    local knife = Instance.new("Tool")
+    knife.Name = "NeggarKnife"
+    knife.RequiresHandle = true
+    knife.CanBeDropped = false
+
+    local handle = Instance.new("Part")
+    handle.Name = "Handle"
+    handle.Size = Vector3.new(1, 0.3, 5) -- Hitbox grande
+    handle.BrickColor = BrickColor.new("Really black")
+    handle.Material = Enum.Material.Neon
+    handle.Anchored = false
+    handle.CanCollide = false
+    handle.Parent = knife
+
+    local mesh = Instance.new("SpecialMesh", handle)
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId = "rbxassetid://4763727850" -- Exemplo mesh de faca estilizada
+    mesh.TextureId = "rbxassetid://4763728101"
+    mesh.Scale = Vector3.new(1.5, 1.5, 1.5)
+
+    knife.GripForward = Vector3.new(0, 0, -1)
+    knife.GripPos = Vector3.new(0, 0, 0)
+    knife.GripRight = Vector3.new(1, 0, 0)
+    knife.GripUp = Vector3.new(0, 1, 0)
+
+    return knife
+end
+
+-- Spawn 3 noobs pretos
+local function spawnNoobs()
+    for i = 1, 3 do
+        local noob = Instance.new("Part", workspace)
+        noob.Size = Vector3.new(2, 5, 1)
+        noob.Position = hrp.Position + Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
+        noob.BrickColor = BrickColor.new("Really black")
+        noob.Anchored = false
+        noob.Name = "NeggarNoob"
+
+        local humanoid = Instance.new("Humanoid", noob)
+        humanoid.Health = 100
+        humanoid.MaxHealth = 100
+    end
+end
+
+-- Aplica invisibilidade e indetectabilidade
+local function applyInvisibility()
+    for _, part in pairs(char:GetChildren()) do
+        if part:IsA("BasePart") then
+            part.Transparency = 0.7
+            part.CanCollide = false
         end
     end
-    return true
+    hum.WalkSpeed = 30
 end
 
--- Função para desviar tipo Sans
-local function dodge()
-    if isDodging then return end
-    isDodging = true
-
-    local rootPos = HumanoidRootPart.Position
-    local rootCFrame = HumanoidRootPart.CFrame
-
-    local rightPos = rootPos + rootCFrame.RightVector * dodgeDistance
-    local leftPos = rootPos - rootCFrame.RightVector * dodgeDistance
-
-    local safePos = nil
-
-    if isPositionSafe(rightPos) then
-        safePos = rightPos
-    elseif isPositionSafe(leftPos) then
-        safePos = leftPos
-    else
-        safePos = rootPos -- Sem lugar seguro, fica parado
+local function removeInvisibility()
+    for _, part in pairs(char:GetChildren()) do
+        if part:IsA("BasePart") then
+            part.Transparency = 0
+            part.CanCollide = true
+        end
     end
+    hum.WalkSpeed = 16
+end
 
-    -- Raycast para achar chão e ajustar altura
-    local rayOrigin = safePos + Vector3.new(0, 50, 0)
-    local rayDirection = Vector3.new(0, -100, 0)
+-- Ataque da faca
+local function attack()
+    if not canAttack or not knife then return end
+    canAttack = false
+
+    local rayOrigin = hrp.Position
+    local rayDirection = hrp.CFrame.LookVector * 5
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {Character}
+    raycastParams.FilterDescendantsInstances = {char}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
 
-    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    if raycastResult then
-        local finalPos = raycastResult.Position + Vector3.new(0, 5, 0)
-        HumanoidRootPart.CFrame = CFrame.new(finalPos)
-    else
-        HumanoidRootPart.CFrame = CFrame.new(safePos + Vector3.new(0, 5, 0))
-    end
-
-    wait(1)
-    isDodging = false
-end
-
--- Função para teletransportar para o player mais próximo
-local function teleportToNearestPlayer()
-    if not isKiller then return end
-
-    local closestPlayer = nil
-    local closestDistance = math.huge
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local dist = (player.Character.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
-            if dist < closestDistance then
-                closestDistance = dist
-                closestPlayer = player
+    if rayResult and rayResult.Instance and rayResult.Instance.Parent then
+        local targetHumanoid = rayResult.Instance.Parent:FindFirstChild("Humanoid")
+        if targetHumanoid and targetHumanoid.Health > 0 then
+            if isNight then
+                targetHumanoid.Health = 0
+                createNotification("Inimigo eliminado instantaneamente!", 2)
+            else
+                targetHumanoid:TakeDamage(20)
             end
         end
     end
 
-    if closestPlayer and closestPlayer.Character and closestPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local targetPos = closestPlayer.Character.HumanoidRootPart.Position
-        HumanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 5, 0))
-    end
+    wait(cooldown)
+    canAttack = true
 end
 
--- Conectar entradas de teclado
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.Q then
-        dodge()
-    elseif input.KeyCode == Enum.KeyCode.M then
-        teleportToNearestPlayer()
+-- Detecta noite e aplica buff
+Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+    local time = Lighting.ClockTime
+    local wasNight = isNight
+    isNight = time >= 18 or time <= 6
+
+    if isNight and not wasNight then
+        applyInvisibility()
+
+        if not player.Backpack:FindFirstChild("NeggarKnife") and not char:FindFirstChild("NeggarKnife") then
+            knife = createKnife()
+            knife.Parent = player.Backpack
+        end
+
+        spawnNoobs()
+        createNotification("Instintos do Neggar ativados", 3)
+
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = player.Name .. " diz: neggars neggars";
+            Color = Color3.fromRGB(0, 255, 0);
+            Font = Enum.Font.GothamBold;
+            FontSize = Enum.FontSize.Size24;
+        })
+
+    elseif not isNight and wasNight then
+        removeInvisibility()
+
+        if char:FindFirstChild("NeggarKnife") then
+            char.NeggarKnife:Destroy()
+        elseif player.Backpack:FindFirstChild("NeggarKnife") then
+            player.Backpack.NeggarKnife:Destroy()
+        end
     end
 end)
 
--- Atualiza referência caso personagem morra e renasça
-LocalPlayer.CharacterAdded:Connect(function(char)
-    Character = char
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+-- Conecta ataque ao clique do mouse
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if char:FindFirstChildOfClass("Tool") and char:FindFirstChildOfClass("Tool").Name == "NeggarKnife" then
+            attack()
+        end
+    end
 end)
